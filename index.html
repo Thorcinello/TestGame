@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TestGame</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const CW = 800, CH = 600;
+const FW = 64, FH = 128, COLS = 8;
+const WSPD = 2, RSPD = 4;
+const AI = 150, AW = 100, AR = 70;
+const T = 32, MC = 50, MR = 50;
+
+canvas.width = CW;
+canvas.height = CH;
+
+const DIR = { down: 0, left: 1, right: 2, up: 3 };
+const REPO = "https://raw.githubusercontent.com/Thorcinello/TestGame/main/";
+
+function loadImg(src) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => res(img);
+    img.onerror = () => rej(new Error("Load failed: " + src));
+    img.src = src;
+  });
+}
+
+function makeGround() {
+  const c = document.createElement("canvas");
+  c.width = T; c.height = T;
+  const g = c.getContext("2d");
+  g.fillStyle = "#8B7355";
+  g.fillRect(0, 0, T, T);
+  const cols = ["#7D6B4F","#9A8262","#82714E","#6E5D43","#94795A"];
+  for (let i = 0; i < 40; i++) {
+    g.fillStyle = cols[Math.random()*cols.length|0];
+    g.fillRect(Math.random()*T|0, Math.random()*T|0, Math.random()<.5?1:2, Math.random()<.5?1:2);
+  }
+  g.strokeStyle = "rgba(0,0,0,0.08)";
+  g.strokeRect(0, 0, T, T);
+  return c;
+}
+
+const P = { x: MC*T/2, y: MR*T/2, dir: 0, frame: 0, state: "idle", at: 0 };
+const keys = {};
+window.addEventListener("keydown", e => { keys[e.key.toLowerCase()] = true; e.preventDefault(); });
+window.addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; e.preventDefault(); });
+
+async function main() {
+  const [idle, walk, run] = await Promise.all([
+    loadImg(REPO + "64X128_Idle_Free.png"),
+    loadImg(REPO + "64X128_Walking_Free.png"),
+    loadImg(REPO + "64X128_Runing_Free.png"),
+  ]);
+  const sheets = { idle, walk, run };
+  const ground = makeGround();
+  let last = 0;
+
+  function update(dt) {
+    let dx = 0, dy = 0;
+    if (keys["arrowup"]||keys["w"]) dy = -1;
+    if (keys["arrowdown"]||keys["s"]) dy = 1;
+    if (keys["arrowleft"]||keys["a"]) dx = -1;
+    if (keys["arrowright"]||keys["d"]) dx = 1;
+    const moving = dx!==0||dy!==0;
+    if (dx!==0 && dy!==0) { dx*=.707; dy*=.707; }
+
+    if (moving) {
+      P.state = keys["shift"] ? "run" : "walk";
+      const sp = keys["shift"] ? RSPD : WSPD;
+      P.x = Math.max(0, Math.min(MC*T-FW, P.x + dx*sp));
+      P.y = Math.max(0, Math.min(MR*T-FH, P.y + dy*sp));
+      if (dy<0) P.dir=DIR.up; else if (dy>0) P.dir=DIR.down;
+      if (dx<0) P.dir=DIR.left; else if (dx>0) P.dir=DIR.right;
+    } else { P.state="idle"; }
+
+    const as = P.state==="idle"?AI:P.state==="walk"?AW:AR;
+    P.at += dt;
+    if (P.at >= as) { P.at -= as; P.frame = (P.frame+1)%COLS; }
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, CW, CH);
+    const cx = P.x+FW/2-CW/2, cy = P.y+FH/2-CH/2;
+
+    const sc = Math.max(0,cx/T|0), ec = Math.min(MC, Math.ceil((cx+CW)/T));
+    const sr = Math.max(0,cy/T|0), er = Math.min(MR, Math.ceil((cy+CH)/T));
+    for (let r=sr;r<er;r++) for (let c=sc;c<ec;c++)
+      ctx.drawImage(ground, (c*T-cx)|0, (r*T-cy)|0);
+
+    const sh = sheets[P.state];
+    ctx.drawImage(sh, P.frame*FW, P.dir*FH, FW, FH, (P.x-cx)|0, (P.y-cy)|0, FW, FH);
+  }
+
+  function loop(t) { const dt=t-last; last=t; update(dt); render(); requestAnimationFrame(loop); }
+  requestAnimationFrame(t => { last=t; loop(t); });
+}
+
+main().catch(e => { document.body.innerHTML="<p style=color:red;padding:20px>Errore: "+e.message+"</p>"; });
+</script>
+</body>
+</html>
